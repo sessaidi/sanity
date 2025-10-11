@@ -12,6 +12,8 @@ It standardizes the boring parts you write in every service:
 * **float sanitizers** (handle `NaN` / `±Inf`)
 * simple **duration** wrappers
 
+**New in v0.2.0:** **typed validation errors** with **category sentinels**, **introspection interfaces** for `errors.As`, and a **redaction build tag** to hide sensitive “got …” details in error strings (while keeping values programmatically accessible).
+
 **No reflection. No magic.** Just explicit, type‑safe helpers designed for hot paths.
 
 ---
@@ -25,7 +27,7 @@ It standardizes the boring parts you write in every service:
 ## Install
 
 ```bash
-go get github.com/sessaidi/sanity@v0.1.0
+go get github.com/sessaidi/sanity@v0.2.0
 ```
 
 ---
@@ -82,6 +84,49 @@ func main() {
 }
 ```
 
+### Additional usage (v0.2.0 typed errors)
+
+```go
+package main
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/sessaidi/sanity"
+)
+
+func validatePort(name string, port int) error {
+	if port < 1 || port > 65535 {
+		return sanity.OutOfRangeError[int]{Field: name, Min: 1, Max: 65535, Got: port}
+	}
+	return nil
+}
+
+func main() {
+	err := validatePort("port", 0)
+	if err != nil {
+		// Category check (errors.Is):
+		if errors.Is(err, sanity.ErrOutOfRange) {
+			fmt.Println("category: out_of_range")
+		}
+		// Introspection (errors.As):
+		var r sanity.RangeError
+		if errors.As(err, &r) {
+			min, max := r.Bounds()
+			fmt.Printf("%s must be in [%v,%v], got=%v\n", r.FieldName(), min, max, r.Value())
+		}
+	}
+}
+```
+
+**Redacted strings build:**
+
+```bash
+# removes “got …” from error strings in LenAtLeastError / OutOfRangeError[T]
+go test -tags=redact ./...
+```
+
 ---
 
 ## Documentation
@@ -94,6 +139,204 @@ func main() {
 > * **Booleans:** avoid `SetIfZero` for `bool` unless `false` truly means “unset”; prefer `*bool` + `SetIfNil`.
 
 ---
+
+## v0.2.0 — Typed Errors, Sentinels, Introspection & Redaction
+
+### Overview
+
+v0.2.0 adds structured error types designed to compose with standard Go errors:
+
+* **Types**:
+  `NotNilError`, `NonZeroError`, `NonEmptyError`, `LenAtLeastError`, `OutOfRangeError[T]`, `NotInSetError`
+
+* **Category sentinels** (for `errors.Is`):
+  `ErrNotNil`, `ErrNonZero`, `ErrNonEmpty`, `ErrLenAtLeast`, `ErrOutOfRange`, `ErrNotInSet`
+
+* **Introspection interfaces** (for `errors.As`):
+
+   * `FieldError` → `FieldName() string`
+   * `RangeError` → `FieldName() string`, `Bounds() (min any, max any)`, `Value() any`
+     *(implemented by `OutOfRangeError[T]`)*
+
+* **Redaction build tag**:
+  Build with `-tags=redact` to hide **“got …”** in error strings for:
+
+   * `LenAtLeastError`
+   * `OutOfRangeError[T]`
+     Programmatic access remains available via `RangeError`.
+
+---
+
+### Error types
+
+#### NotNilError
+
+**Type**
+
+```go
+type NotNilError struct{ Field string }
+```
+
+**Implements**
+
+* `error`
+* `FieldError` (`FieldName() string`)
+* `Unwrap() error` → `ErrNotNil`
+
+**String format (verbose & redacted)**
+
+```
+<field>: must not be nil
+```
+
+**Example**
+
+```go
+err := sanity.NotNilError{Field: "client"}
+errors.Is(err, sanity.ErrNotNil) // true
+```
+
+---
+
+#### NonZeroError
+
+**Type**
+
+```go
+type NonZeroError struct{ Field string }
+```
+
+**Implements**
+
+* `error`
+* `FieldError`
+* `Unwrap() error` → `ErrNonZero`
+
+**String format**
+
+```
+<field>: must be non-zero
+```
+
+---
+
+#### NonEmptyError
+
+**Type**
+
+```go
+type NonEmptyError struct{ Field string }
+```
+
+**Implements**
+
+* `error`
+* `FieldError`
+* `Unwrap() error` → `ErrNonEmpty`
+
+**String format**
+
+```
+<field>: must be non-empty
+```
+
+---
+
+#### NotInSetError
+
+**Type**
+
+```go
+type NotInSetError struct{ Field string }
+```
+
+**Implements**
+
+* `error`
+* `FieldError`
+* `Unwrap() error` → `ErrNotInSet`
+
+**String format**
+
+```
+<field>: invalid value
+```
+
+---
+
+#### LenAtLeastError
+
+**Type**
+
+```go
+type LenAtLeastError struct {
+    Field   string
+    Want    int
+	Got     int
+}
+```
+
+**Implements**
+
+* `error`
+* `FieldError`
+* `Unwrap() error` → `ErrLenAtLeast`
+
+**String format**
+
+* **verbose (`!redact`)**:
+  `<field>: len must be >= <want> (got <got>)`
+* **redacted (`redact`)**:
+  `<field>: len must be >= <want>`
+
+---
+
+#### OutOfRangeError[T]
+
+**Type**
+
+```go
+type OutOfRangeError[T any] struct {
+    Field   string
+    Min     T
+	Max     T
+    Got     T
+}
+```
+
+**Implements**
+
+* `error`
+* `FieldError`
+* `RangeError` (`Bounds() (any, any)`, `Value() any`)
+* `Unwrap() error` → `ErrOutOfRange`
+
+**String format**
+
+* **verbose (`!redact`)**:
+  `<field>: must be in [<min>,<max>], got <got>`
+* **redacted (`redact`)**:
+  `<field>: must be in [<min>,<max>]`
+
+**Example**
+
+```go
+e := sanity.OutOfRangeError[int]{Field: "port", Min: 1, Max: 10, Got: 0}
+if errors.Is(e, sanity.ErrOutOfRange) {
+    var r sanity.RangeError
+    if errors.As(e, &r) {
+        min, max := r.Bounds()
+        got := r.Value()
+        _ = min
+		_ = max
+		_ = got
+    }
+}
+```
+
+---
+
+## v0.1.0 — Defaults & Clamping
 
 ### Defaults & Clamping
 
@@ -645,7 +888,7 @@ sanity.ClampFinite(&v, 0) // v = 0
 
 ```bash
 go test ./...
-go test -run=^$ -bench . -benchmem
+go test -tags=redact ./...  # redacted error strings
 ```
 
 ---
