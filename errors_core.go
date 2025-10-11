@@ -3,13 +3,19 @@ package sanity
 import "errors"
 
 // NotNilError indicates a nil pointer or nilable value.
-type NotNilError struct{ Field string }
+type NotNilError struct {
+	Field string
+}
 
 // NonZeroError indicates a zero-value where non-zero is required.
-type NonZeroError struct{ Field string }
+type NonZeroError struct {
+	Field string
+}
 
 // NonEmptyError indicates an empty string where non-empty is required.
-type NonEmptyError struct{ Field string }
+type NonEmptyError struct {
+	Field string
+}
 
 // LenAtLeastError indicates len(value) < Want.
 type LenAtLeastError struct {
@@ -26,7 +32,9 @@ type OutOfRangeError[T any] struct {
 }
 
 // NotInSetError indicates v ∉ allowed set.
-type NotInSetError struct{ Field string }
+type NotInSetError struct {
+	Field string
+}
 
 // ---- Category sentinels (for errors.Is) ----
 var (
@@ -56,27 +64,62 @@ type RangeError interface {
 
 // ---- Unwrap to category sentinels ----
 
-func (e NotNilError) Unwrap() error     { return ErrNotNil }
-func (e NonZeroError) Unwrap() error    { return ErrNonZero }
-func (e NonEmptyError) Unwrap() error   { return ErrNonEmpty }
-func (e LenAtLeastError) Unwrap() error { return ErrLenAtLeast }
-func (e NotInSetError) Unwrap() error   { return ErrNotInSet }
+func (e NotNilError) Unwrap() error {
+	return ErrNotNil
+}
+
+func (e NonZeroError) Unwrap() error {
+	return ErrNonZero
+}
+
+func (e NonEmptyError) Unwrap() error {
+	return ErrNonEmpty
+}
+
+func (e LenAtLeastError) Unwrap() error {
+	return ErrLenAtLeast
+}
+
+func (e NotInSetError) Unwrap() error {
+	return ErrNotInSet
+}
+
 func (e OutOfRangeError[T]) Unwrap() error {
 	return ErrOutOfRange
 }
 
 // ---- Field names ----
 
-func (e NotNilError) FieldName() string     { return e.Field }
-func (e NonZeroError) FieldName() string    { return e.Field }
-func (e NonEmptyError) FieldName() string   { return e.Field }
-func (e LenAtLeastError) FieldName() string { return e.Field }
-func (e NotInSetError) FieldName() string   { return e.Field }
+func (e NotNilError) FieldName() string {
+	return e.Field
+}
+
+func (e NonZeroError) FieldName() string {
+	return e.Field
+}
+
+func (e NonEmptyError) FieldName() string {
+	return e.Field
+}
+
+func (e LenAtLeastError) FieldName() string {
+	return e.Field
+}
+
+func (e NotInSetError) FieldName() string {
+	return e.Field
+}
+
 func (e OutOfRangeError[T]) FieldName() string {
 	return e.Field
 }
 
 // ---- Range details ----
 
-func (e OutOfRangeError[T]) Bounds() (any, any) { return e.Min, e.Max }
-func (e OutOfRangeError[T]) Value() any         { return e.Got }
+func (e OutOfRangeError[T]) Bounds() (any, any) {
+	return e.Min, e.Max
+}
+
+func (e OutOfRangeError[T]) Value() any {
+	return e.Got
+}
