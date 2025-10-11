@@ -19,7 +19,6 @@ type LenAtLeastError struct {
 }
 
 // OutOfRangeError indicates v ∉ [Min,Max] (inclusive).
-// T is unconstrained: this type is a container; comparisons happen outside.
 type OutOfRangeError[T any] struct {
 	Field    string
 	Min, Max T
