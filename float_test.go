@@ -1,6 +1,7 @@
 package sanity_test
 
 import (
+	"github.com/stretchr/testify/assert"
 	"math"
 	"testing"
 
@@ -89,9 +90,7 @@ func TestFloatFunctions(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tc.function()
-			if got != tc.expected {
-				t.Errorf("Failed %s: expected %v, got %v", tc.name, tc.expected, got)
-			}
+			assert.Equal(t, tc.expected, got, "Failed %s: expected %v, got %v", tc.name, tc.expected, got)
 		})
 	}
 }
