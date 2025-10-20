@@ -9,7 +9,6 @@ import (
 )
 
 var sinkErr error
-var sinkBool bool
 var sinkInt int
 
 func blackbox[T any](v T) { sinkInt++ }

@@ -55,14 +55,14 @@ func NewGuard(opts ...GuardOption) Guard {
 	return g
 }
 
-func (g *Guard) lock() {
-	if g.mu != nil {
-		g.mu.Lock()
+func (gd *Guard) lock() {
+	if gd.mu != nil {
+		gd.mu.Lock()
 	}
 }
-func (g *Guard) unlock() {
-	if g.mu != nil {
-		g.mu.Unlock()
+func (gd *Guard) unlock() {
+	if gd.mu != nil {
+		gd.mu.Unlock()
 	}
 }
 
@@ -75,115 +75,115 @@ type MGStats struct {
 	Dropped  int
 }
 
-func (g *Guard) Stats() MGStats {
-	g.lock()
-	defer g.unlock()
-	return MGStats{Checks: g.checks, Failures: g.failures, Kept: g.n, Dropped: g.dropped}
+func (gd *Guard) Stats() MGStats {
+	gd.lock()
+	defer gd.unlock()
+	return MGStats{Checks: gd.checks, Failures: gd.failures, Kept: gd.n, Dropped: gd.dropped}
 }
 
 // Reset clears all state for reuse.
-func (g *Guard) Reset() {
-	g.lock()
-	g.e0, g.e1, g.e2, g.e3 = nil, nil, nil, nil
-	g.more = nil
-	g.n = 0
-	g.checks, g.failures, g.dropped = 0, 0, 0
-	g.unlock()
+func (gd *Guard) Reset() {
+	gd.lock()
+	gd.e0, gd.e1, gd.e2, gd.e3 = nil, nil, nil, nil
+	gd.more = nil
+	gd.n = 0
+	gd.checks, gd.failures, gd.dropped = 0, 0, 0
+	gd.unlock()
 }
 
 // Ok reports whether no error has been recorded.
-func (g *Guard) Ok() bool {
-	g.lock()
-	ok := g.n == 0
-	g.unlock()
+func (gd *Guard) Ok() bool {
+	gd.lock()
+	ok := gd.n == 0
+	gd.unlock()
 	return ok
 }
 
 // Add records err if non-nil; respects cap (max).
-func (g *Guard) Add(err error) {
+func (gd *Guard) Add(err error) {
 	if err == nil {
 		return
 	}
-	g.lock()
-	g.failures++
-	if g.max > 0 && g.n >= g.max {
-		g.dropped++
-		g.unlock()
+	gd.lock()
+	gd.failures++
+	if gd.max > 0 && gd.n >= gd.max {
+		gd.dropped++
+		gd.unlock()
 		return
 	}
-	switch g.n {
+	switch gd.n {
 	case 0:
-		g.e0 = err
+		gd.e0 = err
 	case 1:
-		g.e1 = err
+		gd.e1 = err
 	case 2:
-		g.e2 = err
+		gd.e2 = err
 	case 3:
-		g.e3 = err
+		gd.e3 = err
 	default:
-		g.more = append(g.more, err)
+		gd.more = append(gd.more, err)
 	}
-	g.n++
-	g.unlock()
+	gd.n++
+	gd.unlock()
 }
 
 // Check is a convenience alias for Add.
-func (g *Guard) Check(err error) {
+func (gd *Guard) Check(err error) {
 	if err == nil {
 		return
 	}
-	g.Add(err)
+	gd.Add(err)
 }
 
 // Check is a function that returns an error when evaluated.
 type Check func() error
 
 // CheckLazy evaluates makeErr only if not at cap; increments Checks when evaluated.
-func (g *Guard) CheckLazy(makeErr func() error) {
+func (gd *Guard) CheckLazy(makeErr func() error) {
 	if makeErr == nil {
 		return
 	}
-	g.lock()
-	if g.max > 0 && g.n >= g.max {
-		g.unlock()
+	gd.lock()
+	if gd.max > 0 && gd.n >= gd.max {
+		gd.unlock()
 		return
 	}
-	g.checks++
-	g.unlock()
+	gd.checks++
+	gd.unlock()
 
 	if err := makeErr(); err != nil {
-		g.Add(err)
+		gd.Add(err)
 	}
 }
 
 // AddCheck increments Checks and evaluates f unless cap reached.
-func (g *Guard) AddCheck(f Check) {
+func (gd *Guard) AddCheck(f Check) {
 	if f == nil {
 		return
 	}
-	g.lock()
-	if g.max > 0 && g.n >= g.max {
-		g.unlock()
+	gd.lock()
+	if gd.max > 0 && gd.n >= gd.max {
+		gd.unlock()
 		return
 	}
-	g.checks++
-	g.unlock()
+	gd.checks++
+	gd.unlock()
 
 	if err := f(); err != nil {
-		g.Add(err)
+		gd.Add(err)
 	}
 }
 
 // Run evaluates checks in order, stopping once cap is reached.
-func (g *Guard) Run(checks ...Check) {
+func (gd *Guard) Run(checks ...Check) {
 	for _, f := range checks {
-		g.lock()
-		reached := g.max > 0 && g.n >= g.max
-		g.unlock()
+		gd.lock()
+		reached := gd.max > 0 && gd.n >= gd.max
+		gd.unlock()
 		if reached {
 			return
 		}
-		g.AddCheck(f)
+		gd.AddCheck(f)
 	}
 }
 
@@ -233,6 +233,8 @@ func (gd *Guard) Err() error {
 
 // snapshotErrorsLocked returns copies when needed while the lock is held.
 // The returned 'more' is safe for the caller to append to.
+//
+//lint:ignore ST1008 function used internally the last value is the errors dropped
 func (gd *Guard) snapshotErrorsLocked() (error, error, error, error, []error, int) {
 	e0, e1, e2, e3 := gd.e0, gd.e1, gd.e2, gd.e3
 	m, dropped := gd.more, gd.dropped
