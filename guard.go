@@ -66,7 +66,6 @@ func (gd *Guard) unlock() {
 	}
 }
 
-// MGStats
 // Stats for inspection/telemetry.
 type MGStats struct {
 	Checks   int
@@ -99,6 +98,14 @@ func (gd *Guard) Ok() bool {
 	return ok
 }
 
+// ReachedCap reports whether the guard is at its configured cap (max > 0 && n >= max).
+func (gd *Guard) ReachedCap() bool {
+	gd.lock()
+	reached := gd.max > 0 && gd.n >= gd.max
+	gd.unlock()
+	return reached
+}
+
 // Add records err if non-nil; respects cap (max).
 func (gd *Guard) Add(err error) {
 	if err == nil {
@@ -127,12 +134,51 @@ func (gd *Guard) Add(err error) {
 	gd.unlock()
 }
 
+// AddKeep is like Add, but returns whether the error was kept (not dropped).
+// If err == nil, it returns true.
+func (gd *Guard) AddKeep(err error) bool {
+	if err == nil {
+		return true
+	}
+	gd.lock()
+	gd.failures++
+	if gd.max > 0 && gd.n >= gd.max {
+		gd.dropped++
+		gd.unlock()
+		return false
+	}
+	switch gd.n {
+	case 0:
+		gd.e0 = err
+	case 1:
+		gd.e1 = err
+	case 2:
+		gd.e2 = err
+	case 3:
+		gd.e3 = err
+	default:
+		gd.more = append(gd.more, err)
+	}
+	gd.n++
+	gd.unlock()
+	return true
+}
+
 // Check is a convenience alias for Add.
 func (gd *Guard) Check(err error) {
 	if err == nil {
 		return
 	}
 	gd.Add(err)
+}
+
+// CheckKeep is like Check, but returns whether the error was kept (not dropped).
+// If err == nil, it returns true.
+func (gd *Guard) CheckKeep(err error) bool {
+	if err == nil {
+		return true
+	}
+	return gd.AddKeep(err)
 }
 
 // Check is a function that returns an error when evaluated.
@@ -201,7 +247,8 @@ func (e ErrorsClampedError) Error() string {
 }
 
 // Err returns nil, a single error, or an aggregate snapshot.
-// In thread-safe mode, it copies the backing slice under lock.
+// It never mutates internal storage; when a sentinel is needed or
+// in thread-safe mode, it returns a copy/snapshot.
 func (gd *Guard) Err() error {
 	gd.lock()
 	switch gd.n {
@@ -232,9 +279,7 @@ func (gd *Guard) Err() error {
 }
 
 // snapshotErrorsLocked returns copies when needed while the lock is held.
-// The returned 'more' is safe for the caller to append to.
-//
-//lint:ignore ST1008 function used internally the last value is the errors dropped
+// The returned 'more' slice is safe for the caller to append to.
 func (gd *Guard) snapshotErrorsLocked() (error, error, error, error, []error, int) {
 	e0, e1, e2, e3 := gd.e0, gd.e1, gd.e2, gd.e3
 	m, dropped := gd.more, gd.dropped
@@ -253,7 +298,7 @@ func (gd *Guard) snapshotErrorsLocked() (error, error, error, error, []error, in
 
 	want := len(m)
 	if dropped > 0 {
-		want++
+		want++ // room for sentinel
 	}
 	out := make([]error, 0, want)
 	if len(m) > 0 {
@@ -292,6 +337,24 @@ type multiError struct {
 }
 
 func (m multiError) Error() string { return "multiple errors" }
+
+// Len reports number of underlying errors (SSO + more).
+func (m multiError) Len() int {
+	n := 0
+	if m.e0 != nil {
+		n++
+	}
+	if m.e1 != nil {
+		n++
+	}
+	if m.e2 != nil {
+		n++
+	}
+	if m.e3 != nil {
+		n++
+	}
+	return n + len(m.more)
+}
 
 // Iter visits SSO (e0..e3) then all entries in 'more' in order.
 func (m multiError) Iter(fn func(error) bool) {
